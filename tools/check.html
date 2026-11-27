@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Oddle – Fragenprüfung</title>
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 24px; background: #0b3b44; color: #eaf6f6; }
+  h1 { font-size: 20px; }
+  table { border-collapse: collapse; width: 100%; max-width: 980px; }
+  th, td { padding: 4px 8px; border-bottom: 1px solid #1d5c66; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  .bad { background: #7a1f1f; }
+  .ok { color: #8fe3b0; }
+  #sum { font-size: 16px; margin: 12px 0; }
+</style>
+</head>
+<body>
+<h1>Oddle – exakte Lösung gegen Simulation</h1>
+<p>Jede Frage läuft mit <b id="n"></b> Versuchen. Abweichung als z-Wert; |z| &gt; 4,5 gilt als Fehler. Zusätzlich wird geprüft, dass num/den und p zusammenpassen.</p>
+<div id="sum">Läuft …</div>
+<table id="t"><thead><tr><th>Frage</th><th>exakt</th><th>Simulation</th><th>z</th><th>Bruch ok</th><th>Status</th></tr></thead><tbody></tbody></table>
+<script src="../js/sim.js"></script>
+<script src="../js/questions.js"></script>
+<script>
+const N = +(new URLSearchParams(location.search).get('n') || 200000);
+document.getElementById('n').textContent = N.toLocaleString('de-CH');
+const tb = document.querySelector('#t tbody');
+const qs = ODDLE_QUESTIONS;
+let bad = 0, i = 0;
+window.oddleCheck = { done: false, bad: 0, rows: [] };
+
+function fracOk(q) {
+  // num/den mit BigInt auf 12 Stellen auswerten
+  const num = BigInt(q.num), den = BigInt(q.den);
+  const scaled = Number((num * 10n ** 12n) / den) / 1e12;
+  return Math.abs(scaled - q.p) < 1e-9;
+}
+
+function step() {
+  if (i >= qs.length) {
+    document.getElementById('sum').textContent =
+      `${qs.length} Fragen geprüft, ${bad} Auffälligkeiten.`;
+    window.oddleCheck.done = true; window.oddleCheck.bad = bad;
+    return;
+  }
+  const q = qs[i++];
+  const r = OddleSim.run(q.sim, N, 100);
+  const est = r.hits / r.trials;
+  const sd = Math.sqrt(q.p * (1 - q.p) / r.trials);
+  const z = (est - q.p) / sd;
+  const fo = fracOk(q);
+  const fail = Math.abs(z) > 4.5 || !fo || r.trials < N * 0.99;
+  if (fail) bad++;
+  window.oddleCheck.rows.push({ id: q.id, p: q.p, est, z, fo, fail });
+  const tr = document.createElement('tr');
+  if (fail) tr.className = 'bad';
+  tr.innerHTML = `<td>${q.id}</td><td>${(q.p * 100).toFixed(3)} %</td><td>${(est * 100).toFixed(3)} %</td>` +
+    `<td>${z.toFixed(2)}</td><td>${fo ? 'ja' : 'NEIN'}</td><td class="${fail ? '' : 'ok'}">${fail ? 'FEHLER' : 'ok'}</td>`;
+  tb.appendChild(tr);
+  setTimeout(step, 0);
+}
+step();
+</script>
+</body>
+</html>
